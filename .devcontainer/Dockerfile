@@ -1,9 +1,33 @@
 ARG ROS_VERSION=foxy
 FROM ros:$ROS_VERSION
 
+SHELL ["/bin/bash", "-c"]
+
 ARG ROS_VERSION=foxy
 RUN sudo apt-get update && sudo apt-get install -y \
-    ros-${ROS_VERSION}-rqt-graph
+    git \
+    nano \
+    vim \
+    python3-pip \
+    libeigen3-dev \
+    tmux \
+    ros-${ROS_VERSION}-rqt-graph \
+    ros-${ROS_VERSION}-ackermann-msgs \
+    ros-${ROS_VERSION}-rviz2
+RUN apt-get -y dist-upgrade
+RUN pip3 install transforms3d
+
+RUN cd f1tenth_gym && \
+    pip3 install -e .
+
+# ros2 gym bridge
+RUN cd f1tenth_gym_ros && mkdir -p sim_ws/src/f1tenth_gym_ros
+COPY ./f1tenth_gym_ros ./f1tenth_gym_ros/sim_ws/src/f1tenth_gym_ros
+RUN source /opt/ros/foxy/setup.bash && \
+    cd f1tenth_gym_ros/sim_ws/ && \
+    apt-get update --fix-missing && \
+    rosdep install -i --from-path src --rosdistro foxy -y && \
+    colcon build
 
 ARG USERNAME=USERNAME
 ARG USER_UID=1000
