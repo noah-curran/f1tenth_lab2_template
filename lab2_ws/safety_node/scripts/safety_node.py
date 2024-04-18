@@ -25,19 +25,37 @@ class SafetyNode(Node):
 
         NOTE that the x component of the linear velocity in odom is the speed
         """
-        self.speed = 0.
-        # TODO: create ROS subscribers and publishers.
-
-    def odom_callback(self, odom_msg):
-        # TODO: update current speed
-        self.speed = 0.
-
-    def scan_callback(self, scan_msg):
-        # TODO: calculate TTC
         
-        # TODO: publish command to brake
-        pass
+        self._laser_scan_sub = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
+        self._odemetry_sub = self.create_subscription(Odometry, 'ego_racecar/odom', self.odom_callback, 10)
+        self._cmd_drive_pub = self.create_publisher(AckermannDriveStamped, 'drive', 10)
+        
+        self.speed = 0.
+        self.scan = LaserScan()
+        self.last_scan = LaserScan()
+        self.ttc_threshold = 1.
 
+    def odom_callback(self, odom_msg: Odometry):
+        self.speed = odom_msg.twist.twist.linear
+
+    def scan_callback(self, scan_msg: LaserScan):
+        self.last_scan = self.scan
+        self.scan = scan_msg
+        
+        curr_time = self.scan.header.stamp.sec + self.scan.header.stamp.nanosec/10e9
+        last_time = self.last_scan.header.stamp.sec + self.last_scan.header.stamp.nanosec/10e9
+        r_dot = curr_time - last_time
+        
+        for r in self.scan.ranges:
+            if r >= self.scan.angle_min and r <= self.scan.angle_max:
+                
+                ittc = r / -r_dot
+                
+                if ittc < self.ttc_threshold:
+                    ackermann_msg = AckermannDriveStamped()
+                    ackermann_msg.drive.speed = 0.
+                    self._cmd_drive_pub.publish(ackermann_msg)
+                
 def main(args=None):
     rclpy.init(args=args)
     safety_node = SafetyNode()
