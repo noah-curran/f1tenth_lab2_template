@@ -17,18 +17,6 @@ RUN sudo apt-get update && sudo apt-get install -y \
 RUN apt-get -y dist-upgrade
 RUN pip3 install transforms3d
 
-RUN cd f1tenth_gym && \
-    pip3 install -e .
-
-# ros2 gym bridge
-RUN cd f1tenth_gym_ros && mkdir -p sim_ws/src/f1tenth_gym_ros
-COPY ./f1tenth_gym_ros ./f1tenth_gym_ros/sim_ws/src/f1tenth_gym_ros
-RUN source /opt/ros/foxy/setup.bash && \
-    cd f1tenth_gym_ros/sim_ws/ && \
-    apt-get update --fix-missing && \
-    rosdep install -i --from-path src --rosdistro foxy -y && \
-    colcon build
-
 ARG USERNAME=USERNAME
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
