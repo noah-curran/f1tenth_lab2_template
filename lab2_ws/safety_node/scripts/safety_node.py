@@ -30,31 +30,50 @@ class SafetyNode(Node):
         self._odemetry_sub = self.create_subscription(Odometry, 'ego_racecar/odom', self.odom_callback, 10)
         self._cmd_drive_pub = self.create_publisher(AckermannDriveStamped, 'drive', 10)
         
-        self.speed = 0.
+        
+        self.speed = None
         self.scan = LaserScan()
         self.last_scan = LaserScan()
         self.ttc_threshold = 1.
+        self.forward_range = np.deg2rad(30)
 
     def odom_callback(self, odom_msg: Odometry):
         self.speed = odom_msg.twist.twist.linear
 
     def scan_callback(self, scan_msg: LaserScan):
+        
+        if self.speed is None:
+            self.get_logger().warn('No odometry data available yet.')
+            return
+        
         self.last_scan = self.scan
         self.scan = scan_msg
         
-        curr_time = self.scan.header.stamp.sec + self.scan.header.stamp.nanosec/10e9
-        last_time = self.last_scan.header.stamp.sec + self.last_scan.header.stamp.nanosec/10e9
-        r_dot = curr_time - last_time
+        velocity = np.sqrt(self.speed.x**2 + self.speed.y**2)
         
-        for r in self.scan.ranges:
-            if r >= self.scan.angle_min and r <= self.scan.angle_max:
-                
-                ittc = r / -r_dot
-                
-                if ittc < self.ttc_threshold:
-                    ackermann_msg = AckermannDriveStamped()
-                    ackermann_msg.drive.speed = 0.
-                    self._cmd_drive_pub.publish(ackermann_msg)
+        num_points = len(self.scan.ranges)
+        mid_point = num_points // 2
+        angle_per_step = self.scan.angle_increment
+        start_index = int(mid_point - self.forward_range / angle_per_step)
+        end_index = int(mid_point + self.forward_range / angle_per_step)
+        
+        ittc_list = []
+        
+        for i in range(start_index, end_index):
+            distance = self.scan.ranges[i]
+            ittc = distance / velocity if velocity > 0 else float('inf')
+            ittc_list.append(ittc)
+        
+        if any(ittc < self.ttc_threshold for ittc in ittc_list):
+            self._emergency_stop()
+
+    def _emergency_stop(self):
+        self.get_logger().info(f"iTTC below threshold and emergency stop")
+                    
+        ackermann_msg = AckermannDriveStamped()
+        ackermann_msg.drive.speed = 0.
+        ackermann_msg.drive.steering_angle = 0.
+        self._cmd_drive_pub.publish(ackermann_msg)
                 
 def main(args=None):
     rclpy.init(args=args)
